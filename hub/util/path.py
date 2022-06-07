@@ -83,3 +83,9 @@ def convert_pathlib_to_string_if_needed(path: Union[str, pathlib.Path]) -> str:
     if isinstance(path, pathlib.Path):
         path = str(path)
     return path
+
+
+def convert_string_to_pathlib_if_needed(path, convert_to_pathlib=False):
+    if convert_to_pathlib and "//" not in path:
+        path = pathlib.Path(path)
+    return path
