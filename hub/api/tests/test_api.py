@@ -28,6 +28,7 @@ from hub.util.exceptions import (
     BadRequestException,
     ReadOnlyModeError,
 )
+from hub.util.path import convert_string_to_pathlib_if_needed
 from hub.util.pretty_print import summary_tensor, summary_dataset
 from hub.constants import MB
 
@@ -1712,17 +1713,6 @@ def test_partial_read_then_write(s3_ds_generator):
 
     with ds:
         ds.xyz[1] = 20 * np.ones((1000, 1000))
-
-
-def convert_string_to_pathlib_if_needed(path, convert_to_pathlib=False):
-    converted_path = pathlib.Path(path)
-    if (
-        convert_to_pathlib
-        and "//" not in path
-        and not isinstance(converted_path, pathlib.WindowsPath)
-    ):
-        return converted_path
-    return path
 
 
 def test_exist_ok(local_ds):
