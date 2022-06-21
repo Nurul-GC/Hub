@@ -300,7 +300,6 @@ class Tensor:
         Raises:
             TensorDtypeMismatchError: TensorDtypeMismatchError: Dtype for array must be equal to or castable to this tensor's dtype
         """
-        self.check_link_ready()
         self._write_initialization()
         [f() for f in list(self.dataset._update_hooks.values())]
         self.chunk_engine.extend(
@@ -430,8 +429,6 @@ class Tensor:
             if sample_shape_tensor
             else None
         )
-        if sample_shape_provider is None:
-            self.check_link_ready()
         shape: Tuple[Optional[int], ...]
         shape = self.chunk_engine.shape(
             self.index, sample_shape_provider=sample_shape_provider
@@ -603,7 +600,6 @@ class Tensor:
             >>> tensor.shape
             (1, 3, 3)
         """
-        self.check_link_ready()
         self._write_initialization()
         [f() for f in list(self.dataset._update_hooks.values())]
         update_link_callback = self._update_links if self.meta.links else None
@@ -644,15 +640,6 @@ class Tensor:
         for i in range(len(self)):
             yield self.__getitem__(i, is_iteration=True)
 
-    def check_link_ready(self):
-        if not self.is_link:
-            return
-        missing_keys = self.link_creds.missing_keys
-        if missing_keys:
-            raise ValueError(
-                f"Not all credentials are populated for a tensor with linked data. Missing: {missing_keys}. Populate with `dataset.populate_creds(key, value)`."
-            )
-
     def numpy(
         self, aslist=False, fetch_chunks=False
     ) -> Union[np.ndarray, List[np.ndarray]]:
@@ -674,7 +661,6 @@ class Tensor:
         Returns:
             A numpy array containing the data represented by this tensor.
         """
-        self.check_link_ready()
         return self.chunk_engine.numpy(
             self.index, aslist=aslist, fetch_chunks=fetch_chunks
         )
@@ -808,7 +794,6 @@ class Tensor:
         """
         if self.index.values[0].subscriptable() or len(self.index.values) > 1:
             raise ValueError("tobytes() can be used only on exatcly 1 sample.")
-        self.check_link_ready()
         idx = self.index.values[0].value
         if self.is_link:
             return self.chunk_engine.get_hub_read_sample(idx).buffer  # type: ignore
@@ -976,7 +961,10 @@ class Tensor:
         ```
 
         """
-        if get_compression_type(self.meta.sample_compression) != VIDEO_COMPRESSION:
+        if (
+            get_compression_type(self.meta.sample_compression) != VIDEO_COMPRESSION
+            and self.htype != "link[video]"
+        ):
             raise Exception("Only supported for video tensors.")
         index = self.index
         if index.values[0].subscriptable():
@@ -988,9 +976,12 @@ class Tensor:
         else:
             sub_index = index.values[1].value if len(index.values) > 1 else None
         global_sample_index = next(index.values[0].indices(self.num_samples))
-        sample = self.chunk_engine.get_video_sample(
-            global_sample_index, index, decompress=False
-        )
+        if self.is_link:
+            sample = self.chunk_engine.get_video_url(global_sample_index)  # type: ignore
+        else:
+            sample = self.chunk_engine.get_video_sample(
+                global_sample_index, index, decompress=False
+            )
 
         nframes = self.shape[0]
         start, stop, step, reverse = normalize_index(sub_index, nframes)
@@ -1011,3 +1002,7 @@ class Tensor:
             "is_link": tensor_meta.is_link,
             "is_sequence": tensor_meta.is_sequence,
         }
+
+    @property
+    def sample_indices(self):
+        return self.index.values[0].indices(self.num_samples)
